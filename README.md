@@ -1,10 +1,4 @@
 # Xiangqi_AI
-Xiangqi game with AI
-
-Cấu trúc thư mục (có thể bổ sung thêm)
-
-Tuyệt vời! Cấu trúc thư mục bạn đưa ra rất tốt, rõ ràng và chuyên nghiệp. Dưới đây là một vài gợi ý và giải thích chi tiết hơn để bạn có thể hoàn thiện cấu trúc này, cùng với một số file Python cụ thể bên trong:
-
 **Cấu trúc thư mục chi tiết và giải thích:**
 
 ```bash
