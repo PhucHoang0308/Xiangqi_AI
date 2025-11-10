@@ -1,3 +1,6 @@
+"""
+API chuẩn hóa cho sinh nước đi và đánh giá bàn cờ. Chỉ dùng file này cho AI/game logic, tránh dùng các bản cũ như temp.py.
+"""
 from board.board import Board
 from evaluation.shi_zhi import ShiZhi
 

@@ -1,3 +1,7 @@
+"""
+TODO: File này là bản cũ/trùng lặp của move_generation.py. Khuyến nghị chỉ dùng src/utils/move_generation.py cho logic chính.
+"""
+
 import sys
 import os
 from board.board import Board

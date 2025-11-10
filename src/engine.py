@@ -26,8 +26,7 @@ def engine(board: Board,Ai_color:str,type = 'minimax', difficulty = 2):
         best_move = iterative_deepening.iterative_deepening_search(board, max_depth=difficulty, time_limit=50.0)
     else:
         raise ValueError("Invalid AI type. Use 'alpha_beta' or 'minimax'.")
-    if best_move is not (None,None, float('-inf')):
-
+    if best_move != (None, None, float('-inf')) and best_move[0] is not None and best_move[1] is not None:
         board.handle_AI_move(best_move[0], best_move[1])
     else:
         # Không còn nước đi, để game tự xử lý kết thúc

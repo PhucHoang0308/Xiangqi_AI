@@ -219,38 +219,30 @@ class Board:
     def is_checkmate(self, color):
         """Check if the player of given color is in checkmate."""
         valid_moves = self.get_legal_moves(color)
-        
         if not valid_moves:
-            return True
+            # Nếu không còn nước đi hợp lệ, chỉ checkmate nếu đang bị chiếu
+            return self.is_in_check(color)
         if not self.is_in_check(color):
             return False
-        # Try all possible moves to see if any can get out of check
+        # Thử tất cả nước đi để xem có nước nào thoát khỏi chiếu không
         for row in range(10):
             for col in range(9):
                 piece = self.board[row][col]
                 if piece and piece.color == color:
                     for move in piece.get_valid_moves(self):
-                        # Try the move
                         original_pos = piece.position
                         captured = self.get_piece(move)
-                        
                         self.board[original_pos[0]][original_pos[1]] = None
                         self.board[move[0]][move[1]] = piece
                         piece.position = move
-                        
-                        # Check if still in check
                         still_in_check = self.is_in_check(color)
-                        
-                        # Undo the move
                         self.board[original_pos[0]][original_pos[1]] = piece
                         piece.position = original_pos
                         self.board[move[0]][move[1]] = captured
-
                         if not still_in_check:
                             return False
-
-        #kiểm tra tướng số đường đi get_valid_move có khớp với is_move_legal không
-        return False
+        # Nếu không có nước nào thoát khỏi chiếu thì đúng là checkmate
+        return True
 
     def is_game_over(self):
         """Check if the game is over (checkmate)"""
@@ -445,9 +437,11 @@ class Board:
 
             # Kiểm tra nước đi này có chiếu không
             temp_board = self.copy()
+            temp_piece = temp_board.get_piece(from_pos)
             temp_board.board[from_pos[0]][from_pos[1]] = None
-            temp_board.board[to_pos[0]][to_pos[1]] = piece
-            piece.position = to_pos
+            temp_board.board[to_pos[0]][to_pos[1]] = temp_piece
+            if temp_piece:
+                temp_piece.position = to_pos
             if not temp_board.is_in_check('black' if color == 'red' else 'red'):
                 return False  # Nếu nước này không chiếu tướng thì không phải tam chiếu
 

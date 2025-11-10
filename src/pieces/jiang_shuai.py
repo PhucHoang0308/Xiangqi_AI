@@ -30,21 +30,5 @@ class JiangShuai(Piece):
             
             moves.append(move)
 
-        # Check for "flying general" rule
-        # Generals can't face each other in the same column with no pieces between them        
-        opposite_color = 'black' if self.color == 'red' else 'red'
-
-        # Scan the column for the opposite general
-        start, end = (row + 1, 10) if self.color == 'red' else (row, 0)
-
-        for r in range(start, end, 1 if self.color == 'red' else -1):
-            piece = board.get_piece((r, col))
-            if piece:
-                if piece.__class__.__name__ == 'JiangShuai' and piece.color == opposite_color:
-                    # Đối tướng nằm cùng cột và không có quân cản → hợp lệ theo luật "tướng đối mặt"
-                    # This is a valid "flying general" attack move
-                    moves.append((r, col))
-                # There's a piece between generals, so flying general rule doesn't apply
-                break 
-
+        # Luật "tướng đối mặt" chỉ dùng để kiểm tra chiếu, không phải nước đi hợp lệ của tướng
         return moves
