@@ -73,6 +73,8 @@ class NetworkConnection:
             self.sock.connect((host, port))
             self.connected.set()
             self._start_recv_thread()
+            # ✅ Gửi handshake ngay sau khi kết nối
+            self.send({'type': 'hello', 'msg': 'Client connected'})
             return True
         except Exception as e:
             self.queue.put({'type': 'error', 'message': str(e)})
@@ -108,14 +110,19 @@ class NetworkConnection:
         self.recv_thread.start()
 
     def send(self, obj: dict) -> bool:
+        """Send JSON message terminated by newline"""
         if not self.connected.is_set() or not self.sock:
             return False
         try:
             payload = (json.dumps(obj) + '\n').encode('utf-8')
+            # Gửi từng phần, đảm bảo có newline để recv_loop tách được
             self.sock.sendall(payload)
+            self.sock.flush() if hasattr(self.sock, 'flush') else None
+            print(f"[DEBUG] Sent: {obj}")
             return True
         except Exception as e:
             self.queue.put({'type': 'error', 'message': str(e)})
+            print(f"[ERROR] send(): {e}")
             return False
 
     def get_message(self):
