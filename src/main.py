@@ -3,6 +3,7 @@ import sys
 import os
 from board.board import Board
 import engine
+from network.connection import NetworkConnection, DEFAULT_PORT, get_local_ip
 from search.random_bot import random_bot_move
 import time
 # Initialize pygame
@@ -23,7 +24,10 @@ STATE_PLAYING = 'playing'
 STATE_GAME_OVER = 'game_over'
 STATE_PAUSED = 'paused'
 STATE_SELECT_DIFFICULTY = 'select_difficulty'
-STATE_ONLINE_SETUP = 'online_setup'
+STATE_ONLINE_MENU = 'online_menu'
+STATE_HOST_WAITING = 'host_waiting'
+STATE_JOIN_INPUT = 'join_input'
+STATE_ONLINE_PLAYING = 'online_playing'
 
 # colors
 WHITE = (255, 255, 255)
@@ -73,23 +77,11 @@ class Game:
         self.winner = None
         self.bot_mode = None  # 'random_vs_alpha' hoặc None
         self.default_difficulty = 2
-        self.network = None
-        self.is_online = False
-        # Difficulty selection buttons (vẽ ở vị trí Random vs Alpha-Beta)
-        self.select_difficulty_buttons = [
-            Button(SCREEN_WIDTH//2 - 180, 300, 100, 50, "Easy", WHITE, GOLD),
-            Button(SCREEN_WIDTH//2 - 50, 300, 100, 50, "Medium", WHITE, GOLD),
-            Button(SCREEN_WIDTH//2 + 80, 300, 100, 50, "Hard", WHITE, GOLD)
-        ]
-        # Online setup variables
-        self.online_ip = "127.0.0.1"
-        self.online_port = 5000
-        self.online_mode = None  # 'host' or 'client'
-        self.online_buttons = [
-            Button(SCREEN_WIDTH//2 - 120, 220, 100, 40, "Host", WHITE, BLUE),
-            Button(SCREEN_WIDTH//2 + 20, 220, 100, 40, "Client", WHITE, BLUE),
-            Button(SCREEN_WIDTH//2 - 100, 320, 200, 50, "Kết nối", WHITE, GREEN)
-        ]
+        # Online
+        self.net = None  # type: ignore
+        self.online_role = None  # 'host' or 'client'
+        self.ip_input = ""
+        self.connection_info = None
         # Create UI elements
         self.create_ui_elements()
 
@@ -98,12 +90,36 @@ class Game:
         self.menu_buttons = [
             Button(SCREEN_WIDTH//2 - 100, 160, 200, 50, "Human vs Human", WHITE, GOLD),
             Button(SCREEN_WIDTH//2 - 100, 230, 200, 50, "Human with AI", WHITE, GOLD),
-            Button(SCREEN_WIDTH//2 - 140, 300, 280, 50, "Random vs Alpha-Beta", WHITE, GOLD),
-            Button(SCREEN_WIDTH//2 - 100, 370, 200, 50, "Play Online (PvsP)", WHITE, BLUE),
-            Button(SCREEN_WIDTH//2 - 100, 430, 200, 50, "Continue", WHITE, GREEN),
-            Button(SCREEN_WIDTH//2 - 100, 490, 200, 50, "Quit", WHITE, RED)
+            Button(SCREEN_WIDTH//2 - 100, 300, 200, 50, "Online PvP", WHITE, GOLD),
+            Button(SCREEN_WIDTH//2 - 140, 360, 280, 50, "Random vs Alpha-Beta", WHITE, GOLD),
+            Button(SCREEN_WIDTH//2 - 100, 370, 200, 50, "Continue", WHITE, GREEN),
+            Button(SCREEN_WIDTH//2 - 100, 430, 200, 50, "Quit", WHITE, RED)
         ]
-    # ...existing code...
+        # Difficulty selection buttons (vẽ ở vị trí Random vs Alpha-Beta)
+        self.select_difficulty_buttons = [
+            Button(SCREEN_WIDTH//2 - 180, 300, 100, 50, "Easy", WHITE, GOLD),
+            Button(SCREEN_WIDTH//2 - 50, 300, 100, 50, "Medium", WHITE, GOLD),
+            Button(SCREEN_WIDTH//2 + 80, 300, 100, 50, "Hard", WHITE, GOLD)
+        ]
+            # Color selection buttons
+        self.select_color_buttons = [
+                Button(SCREEN_WIDTH//2 - 120, 380, 100, 50, "Red", WHITE, RED),
+                Button(SCREEN_WIDTH//2 + 20, 380, 100, 50, "Black", WHITE, BLACK)
+            ]
+
+        # Online menu buttons
+        self.online_menu_buttons = [
+            Button(SCREEN_WIDTH//2 - 100, 230, 200, 50, "Host Game", WHITE, GOLD),
+            Button(SCREEN_WIDTH//2 - 100, 300, 200, 50, "Join Game", WHITE, GOLD),
+            Button(SCREEN_WIDTH//2 - 100, 370, 200, 50, "Back", WHITE, RED)
+        ]
+        self.join_buttons = [
+            Button(SCREEN_WIDTH//2 - 100, 360, 200, 40, "Connect", WHITE, GOLD),
+            Button(SCREEN_WIDTH//2 - 100, 410, 200, 40, "Back", WHITE, RED)
+        ]
+        self.host_wait_buttons = [
+            Button(SCREEN_WIDTH//2 - 100, 410, 200, 40, "Back", WHITE, RED)
+        ]
         
         # Difficulty buttons
         self.difficulty_buttons = [
@@ -143,7 +159,37 @@ class Game:
         title_rect = title.get_rect(center=(SCREEN_WIDTH//2, 70))
         screen.blit(title, title_rect)
 
-        if self.state == STATE_SELECT_DIFFICULTY:
+        if self.state == STATE_ONLINE_MENU:
+            font = pygame.font.SysFont('DejaVu Sans Mono', 28, bold=True)
+            title2 = font.render("Online PvP", True, BLACK)
+            screen.blit(title2, (SCREEN_WIDTH//2 - title2.get_width()//2, 140))
+            for b in self.online_menu_buttons:
+                b.draw(screen)
+        elif self.state == STATE_HOST_WAITING:
+            font = pygame.font.SysFont('DejaVu Sans Mono', 22, bold=True)
+            ip = self.connection_info or get_local_ip()
+            lines = [
+                f"Hosting on {ip}:{DEFAULT_PORT}",
+                "Waiting for player to join..."
+            ]
+            for i, t in enumerate(lines):
+                surf = font.render(t, True, BLACK)
+                screen.blit(surf, (SCREEN_WIDTH//2 - surf.get_width()//2, 240 + i*40))
+            for b in self.host_wait_buttons:
+                b.draw(screen)
+        elif self.state == STATE_JOIN_INPUT:
+            font = pygame.font.SysFont('DejaVu Sans Mono', 22, bold=True)
+            label = font.render("Enter Host IP:", True, BLACK)
+            screen.blit(label, (SCREEN_WIDTH//2 - label.get_width()//2, 220))
+            # draw input box
+            box_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, 260, 300, 40)
+            pygame.draw.rect(screen, WHITE, box_rect)
+            pygame.draw.rect(screen, BLACK, box_rect, 2)
+            text_surf = font.render(self.ip_input or "127.0.0.1", True, BLACK)
+            screen.blit(text_surf, (box_rect.x + 8, box_rect.y + 8))
+            for b in self.join_buttons:
+                b.draw(screen)
+        elif self.state == STATE_SELECT_DIFFICULTY:
             # Chỉ vẽ nút chọn độ khó ở vị trí Random vs Alpha-Beta
             font = pygame.font.SysFont('DejaVu Sans Mono', 22, bold=True)
             text = font.render("AI Difficulty:", True, BLACK)
@@ -155,6 +201,14 @@ class Game:
                 else:
                     button.color = WHITE
                 button.draw(screen)
+                # Vẽ nút chọn màu quân
+                text2 = font.render("Choose your color:", True, BLACK)
+                text2_rect = text2.get_rect(center=(SCREEN_WIDTH//2, 370))
+                screen.blit(text2, text2_rect)
+                # Dời các nút chọn màu xuống dưới dòng chữ
+                for i, button in enumerate(self.select_color_buttons):
+                    button.rect.y = 410
+                    button.draw(screen)
         else:
             # Vẽ các nút menu bình thường
             for i, button in enumerate(self.menu_buttons):
@@ -221,7 +275,51 @@ class Game:
 
     def handle_menu_input(self, pos, click):
         """Handle input on the menu screen"""
-        if self.state == STATE_SELECT_DIFFICULTY:
+        if self.state == STATE_ONLINE_MENU:
+            for b in self.online_menu_buttons:
+                b.check_hover(pos)
+            if click:
+                if self.online_menu_buttons[0].is_clicked(pos, click):  # Host
+                    self.net = NetworkConnection()
+                    ip = self.net.start_host(DEFAULT_PORT)
+                    self.connection_info = ip
+                    self.online_role = 'host'
+                    self.player_color = 'red'
+                    self.state = STATE_HOST_WAITING
+                elif self.online_menu_buttons[1].is_clicked(pos, click):  # Join
+                    self.ip_input = ""
+                    self.state = STATE_JOIN_INPUT
+                elif self.online_menu_buttons[2].is_clicked(pos, click):  # Back
+                    self.state = STATE_MENU
+                    return
+        elif self.state == STATE_HOST_WAITING:
+            for b in self.host_wait_buttons:
+                b.check_hover(pos)
+            if click and self.host_wait_buttons[0].is_clicked(pos, click):
+                if self.net:
+                    self.net.close()
+                    self.net = None
+                self.state = STATE_ONLINE_MENU
+            # if a client connects, connected flag will be set in update()
+        elif self.state == STATE_JOIN_INPUT:
+            for b in self.join_buttons:
+                b.check_hover(pos)
+            if click:
+                if self.join_buttons[0].is_clicked(pos, click):  # Connect
+                    host_ip = self.ip_input or "127.0.0.1"
+                    self.net = NetworkConnection()
+                    ok = self.net.connect(host_ip, DEFAULT_PORT)
+                    if ok:
+                        self.online_role = 'client'
+                        self.player_color = 'black'
+                        self.state = STATE_ONLINE_PLAYING
+                        self.board = Board()
+                    else:
+                        # stay and allow retry
+                        pass
+                elif self.join_buttons[1].is_clicked(pos, click):
+                    self.state = STATE_ONLINE_MENU
+        elif self.state == STATE_SELECT_DIFFICULTY:
             # Chỉ xử lý nút chọn độ khó
             for i, button in enumerate(self.select_difficulty_buttons):
                 button.check_hover(pos)
@@ -229,9 +327,18 @@ class Game:
                     self.ai_difficulty = i + 1
                     self.default_difficulty = i + 1
                     print("AI Difficulty set to:", self.ai_difficulty)
-                    self.player_color = 'black'
-                    self.state = STATE_PLAYING
-                    self.reset_game()
+            # Chọn màu quân
+            for i, button in enumerate(self.select_color_buttons):
+                button.check_hover(pos)
+                if click and button.is_clicked(pos, click):
+                    if button.text == "Red":
+                        self.player_color = 'red'
+                        self.state = STATE_PLAYING
+                        self.reset_game()
+                    elif button.text == "Black":
+                        self.player_color = 'black'
+                        self.state = STATE_PLAYING
+                        self.reset_game()
         else:
             # Update button hover states
             for button in self.menu_buttons:
@@ -243,13 +350,13 @@ class Game:
                     self.reset_game()
                 elif self.menu_buttons[1].is_clicked(pos, click): # Play with AI
                     self.state = STATE_SELECT_DIFFICULTY
-                elif self.menu_buttons[2].is_clicked(pos, click):  # Random vs Alpha-Beta
+                elif self.menu_buttons[2].is_clicked(pos, click):  # Online PvP
+                    self.state = STATE_ONLINE_MENU
+                elif self.menu_buttons[3].is_clicked(pos, click):  # Random vs Alpha-Beta
                     self.player_color = 'red'  # không có người chơi
                     self.bot_mode = 'random_vs_alpha'
                     self.state = STATE_PLAYING
                     self.reset_game()
-                elif self.menu_buttons[3].is_clicked(pos, click): # Play Online (PvsP)
-                    self.state = STATE_ONLINE_SETUP
                 elif self.menu_buttons[4].is_clicked(pos, click): # Continue
                     if hasattr(self, "paused_board") and self.paused_board is not None:
                         self.board = self.paused_board
@@ -258,54 +365,6 @@ class Game:
                 elif self.menu_buttons[5].is_clicked(pos, click): # Quit
                     pygame.quit()
                     sys.exit()
-    def draw_online_setup(self):
-        screen.fill(WHITE)
-        font = pygame.font.SysFont('DejaVu Sans Mono', 44, bold=True)
-        title = font.render("Online Setup", True, RED)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH//2, 70))
-        screen.blit(title, title_rect)
-        # Draw Host/Client buttons
-        for button in self.online_buttons[:2]:
-            button.draw(screen)
-        # Draw IP/Port input (hiển thị giá trị hiện tại)
-        font2 = pygame.font.SysFont('DejaVu Sans Mono', 22, bold=True)
-        ip_text = font2.render(f"IP: {self.online_ip}", True, BLACK)
-        port_text = font2.render(f"Port: {self.online_port}", True, BLACK)
-        screen.blit(ip_text, (SCREEN_WIDTH//2 - 100, 270))
-        screen.blit(port_text, (SCREEN_WIDTH//2 - 100, 300))
-        # Draw Connect button
-        self.online_buttons[2].draw(screen)
-        # Hướng dẫn nhập IP/Port bằng phím (có thể nâng cấp ô nhập text sau)
-        hint = font2.render("Nhấn I để nhập IP, P để nhập Port", True, BLUE)
-        screen.blit(hint, (SCREEN_WIDTH//2 - 150, 360))
-    def handle_online_setup_input(self, pos, click, events):
-        for button in self.online_buttons[:2]:
-            button.check_hover(pos)
-        self.online_buttons[2].check_hover(pos)
-        for event in events:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_i:
-                    # Nhập IP qua terminal
-                    ip = input("Nhập IP host (mặc định 127.0.0.1): ").strip() or "127.0.0.1"
-                    self.online_ip = ip
-                elif event.key == pygame.K_p:
-                    port = input("Nhập port (mặc định 5000): ").strip()
-                    self.online_port = int(port) if port else 5000
-        if click:
-            if self.online_buttons[0].is_clicked(pos, click):
-                self.online_mode = 'host'
-            elif self.online_buttons[1].is_clicked(pos, click):
-                self.online_mode = 'client'
-            elif self.online_buttons[2].is_clicked(pos, click):
-                if self.online_mode:
-                    from network import XiangqiNetwork
-                    is_host = (self.online_mode == 'host')
-                    self.network = XiangqiNetwork(is_host, self.online_ip, self.online_port)
-                    self.network.start()
-                    self.is_online = True
-                    self.player_color = 'red' if is_host else 'black'
-                    self.state = STATE_PLAYING
-                    self.reset_game()
                 
     def handle_game_input(self, pos, click):
         """Handle input on the game screen"""
@@ -353,6 +412,32 @@ class Game:
                 self.winner = 'Red'
                 self.state = STATE_GAME_OVER
             return 
+        # Online hosting: transition when client connects
+        if self.state == STATE_HOST_WAITING and self.net:
+            if self.net.connected.is_set():
+                # Host starts game as red
+                self.board = Board()
+                self.state = STATE_ONLINE_PLAYING
+                return
+        # Online playing: poll network messages
+        if self.state == STATE_ONLINE_PLAYING and self.net:
+            # Process incoming messages
+            msg = self.net.get_message()
+            if msg:
+                if msg.get('type') == 'move':
+                    from_pos = tuple(msg['from'])
+                    to_pos = tuple(msg['to'])
+                    # validate and apply
+                    legal = self.board.get_legal_moves(self.board.current_player)
+                    if (from_pos, to_pos) in legal:
+                        self.board.handle_AI_move(from_pos, to_pos)
+                        self.draw_game(); pygame.display.flip()
+                elif msg.get('type') == 'disconnect':
+                    # back to menu
+                    self.state = STATE_MENU
+                    if self.net:
+                        self.net.close(); self.net = None
+            return
         if self.bot_mode == 'random_vs_alpha':
             if self.board.current_player == 'black':
                 random_bot_move(self.board)
@@ -385,27 +470,51 @@ class Game:
         while running:
             mouse_pos = pygame.mouse.get_pos()
             mouse_clicked = False
-            events = pygame.event.get()
-            for event in events:
+            for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mouse_clicked = True
+                elif event.type == pygame.KEYDOWN and self.state == STATE_JOIN_INPUT:
+                    if event.key == pygame.K_BACKSPACE:
+                        self.ip_input = self.ip_input[:-1]
+                    elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                        # Same as pressing Connect
+                        host_ip = self.ip_input or "127.0.0.1"
+                        self.net = NetworkConnection()
+                        if self.net.connect(host_ip, DEFAULT_PORT):
+                            self.online_role = 'client'
+                            self.player_color = 'black'
+                            self.state = STATE_ONLINE_PLAYING
+                            self.board = Board()
+                    else:
+                        ch = event.unicode
+                        if ch and len(ch) == 1 and (ch.isdigit() or ch == '.' or ch == ':'):
+                            self.ip_input += ch
 
             # State machine
             if self.state == STATE_MENU:
                 self.draw_menu()
                 self.handle_menu_input(mouse_pos, mouse_clicked)
-            elif self.state == STATE_SELECT_DIFFICULTY:
+            elif self.state in (STATE_SELECT_DIFFICULTY, STATE_ONLINE_MENU, STATE_HOST_WAITING, STATE_JOIN_INPUT):
                 self.draw_menu()
                 self.handle_menu_input(mouse_pos, mouse_clicked)
-            elif self.state == STATE_ONLINE_SETUP:
-                self.draw_online_setup()
-                self.handle_online_setup_input(mouse_pos, mouse_clicked, events)
             elif self.state == STATE_PLAYING:
                 self.update()
                 self.draw_game()
                 self.handle_game_input(mouse_pos, mouse_clicked)
+            elif self.state == STATE_ONLINE_PLAYING:
+                # Only allow moves when it's your turn
+                self.update()
+                self.draw_game()
+                # Send move if player acted
+                if mouse_clicked and self.board.current_player == self.player_color:
+                    before = len(self.board.move_history)
+                    self.handle_game_input(mouse_pos, True)
+                    after = len(self.board.move_history)
+                    if after > before and self.net:
+                        from_pos, to_pos, _, _ = self.board.move_history[-1]
+                        self.net.send({'type': 'move', 'from': from_pos, 'to': to_pos})
             elif self.state == STATE_GAME_OVER:
                 self.draw_game()
                 self.draw_game_over()
